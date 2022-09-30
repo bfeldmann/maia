@@ -96,7 +96,7 @@ class DatasetGenerator(object):
                 image_file = '{}_{}.jpg'.format(imageId, i)
                 image_crop, mask_crops = self.generate_crop(image, masks, proposal)
                 mask_file = self.save_mask(mask_crops, image_file, self.training_masks_path)
-                image_crop.write_to_file(os.path.join(self.training_images_path, image_file), strip=True, Q=95)
+                image_crop.write_to_file(os.path.join(self.training_images_path, image_file), strip=True, Q=100)
                 image_paths.append(image_file)
                 mask_paths.append(mask_file)
                 np_crop = np.ndarray(buffer=image_crop.write_to_memory(), shape=[image_crop.height, image_crop.width, image_crop.bands], dtype=np.uint8)

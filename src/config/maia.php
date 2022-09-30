@@ -85,6 +85,23 @@ return [
     'mrcnn_inference_script' => __DIR__.'/../resources/scripts/instance-segmentation/InferenceRunner.py',
 
     /*
+    | Path to the script that crops images for feature vector generation.
+    */
+    'crop_images_script' => __DIR__.'/../resources/scripts/instance-segmentation/CropImages.py',
+
+    /*
+    | Path to the script that performs feature vector generation with DINO.
+    */
+    'dino_fv_script' => __DIR__.'/../resources/scripts/instance-segmentation/DinoFVGenerator.py',
+
+    /*
+    | Architectures: See https://github.com/facebookresearch/dino#pretrained-models-on-pytorch-hub
+    | E.g.: dino_resnet50, dino_vitb8, dino_vitb16, dino_vits8, dino_vits16
+    */
+    // TODO: Replace by model file for dino later on
+    'dino_model' => 'dino_vits16'
+
+    /*
     | URL from which to download the latest COCO trained weights for Mask R-CNN.
     */
     'coco_model_url' => env('COCO_MODEL_URL', 'https://github.com/matterport/Mask_RCNN/releases/download/v2.0/mask_rcnn_coco.h5'),

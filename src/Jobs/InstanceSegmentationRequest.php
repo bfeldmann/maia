@@ -75,10 +75,85 @@ class InstanceSegmentationRequest extends JobRequest
             $this->performInference($images, $datasetOutputPath, $trainingOutputPath);
 
             $annotations = $this->parseAnnotations($images);
+
+            # TODO: Check if working correctly, write test
+            $crops = $this->cropImages($images, $datasetOutputPath, $annotations)
+
             $this->dispatchResponse($annotations);
         } finally {
             $this->cleanup();
         }
+    }
+
+    /**
+     * TODO: Test usage
+     *
+     * @param array $imagesMap Map from image IDs to cached file paths.
+     * @param string $outputJsonPath Path to the output file of the script.
+     * @param array $annotations Array of the parsed annotations.
+     *
+     * @return string Input JSON file path.
+     */
+    protected function createCropImagesJson($imagesMap, $outputJsonPath, $annotations)
+    {
+        $path = "{$this->tmpDir}/input-crop_images.json";
+        $content = [
+            'images' => $imagesMap,
+            'annotations' => $annotations,
+            'tmp_dir' => $this->tmpDir,
+            'max_workers' => intval(config('maia.max_workers')),
+            'output_path' => $outputJsonPath,
+            // TODO: Change to config file, "see intval(config('maia.max_workers')),"
+            'resize_dimension' => 512,
+        ];
+
+        File::put($path, json_encode($content, JSON_UNESCAPED_SLASHES));
+
+        return $path;
+    }
+
+    /**
+     * TODO: Test usage
+     *
+     * @param array $images GenericImage instances.
+     * @param string $datasetOutputPath Path to the JSON output of the dataset generator.
+     * @param array $annotations Array of the parsed annotations.
+     *
+     * @return string Path to the JSON output file of the cropping script.
+     */
+    protected function cropImages($images, $datasetOutputPath, $annotations)
+    {
+        $outputPath = "{$this->tmpDir}/output-cropping.json";
+
+        FileCache::batch($relevantImages, function ($images, $paths) use ($datasetOutputPath) {
+            $imagesMap = $this->buildImagesMap($images, $paths);
+            $inputPath = $this->createCropJson($imagesMap, $outputPath, $annotations);
+            $script = config('maia.crop_images_script');
+            $this->python("{$script} {$inputPath}", 'cropimages-log.txt');
+        });
+
+        return $outputPath;
+    }
+
+    /**
+     * Unfinished function, currently does not work.
+     * TODO: PHP-Function and Python code not yet adapted for use.
+     * Perform DINO feature vector generation.
+     *
+     * @param array $images GenericImage instances.
+     * @param string $datasetOutputPath Path to the JSON output of the dataset generator.
+     * @param string $trainingOutputPath Path to the JSON output of the training script.
+     */
+    protected function generateDINOFV($cropOutputPath)
+    {
+        $outputPath = "{$this->tmpDir}/output-dinofv.json";
+        // TODO: Path of cropped_images from previous function should be given to new input json
+        $backbone = config('maia.dino_model'); // -> toJson
+        $inputPath = $this->createDINOJson($backbone);
+        $script = config('maia.dino_fv_script');
+
+        $this->python("{$script} {$inputPath}", 'dinofv-log.txt');
+
     }
 
     /**
