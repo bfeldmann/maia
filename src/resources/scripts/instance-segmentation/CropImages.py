@@ -1,4 +1,3 @@
-# Work in progress
 import os
 import sys
 import json
@@ -11,20 +10,21 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 class CropGenerator(object):
     def __init__(self, params):
         # Dict of image IDs and file paths to the images to process.
-        self.images = params['images']
-        # Dict of image IDs and file paths to the images to process.
         self.annotations = params['annotations']
 
-        # Path to the directory to store temporary files.
-        self.tmp_dir = params['tmp_dir']
-        # Estimated available GPU memory in bytes.
-        # TODO: Remove
-        self.available_bytes = params['available_bytes']
+        # Path to cropped images
+        self.cropped_images_path = '{}/cropped_images'.format(self.tmp_dir)
+
+        # Dict of image IDs and file paths to the images to process.
+        self.images = params['images']
 
         self.max_workers = params['max_workers']
 
-        self.cropped_images_path = '{}/cropped_images'.format(self.tmp_dir)
+        # Dimension used for resizing cropped images.
         self.resize_dimension = params['resize_dimension']
+
+        # Path to the directory to store temporary files.
+        self.tmp_dir = params['tmp_dir']
 
     def generate(self):
         # Check if dir(s) are there, create if missing

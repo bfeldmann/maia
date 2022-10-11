@@ -76,8 +76,10 @@ class InstanceSegmentationRequest extends JobRequest
 
             $annotations = $this->parseAnnotations($images);
 
-            # TODO: Check if working correctly, write test
-            $crops = $this->cropImages($images, $datasetOutputPath, $annotations)
+            # ---> TODO: Check if working correctly, write test
+            $crops = $this->cropImages($images, $datasetOutputPath, $annotations);
+            $fvs = $this->generateDINOFV($crops);
+            # <---
 
             $this->dispatchResponse($annotations);
         } finally {
@@ -103,8 +105,7 @@ class InstanceSegmentationRequest extends JobRequest
             'tmp_dir' => $this->tmpDir,
             'max_workers' => intval(config('maia.max_workers')),
             'output_path' => $outputJsonPath,
-            // TODO: Change to config file, "see intval(config('maia.max_workers')),"
-            'resize_dimension' => 512,
+            'resize_dimension' => intval(config('maia.resize_dimension')),
         ];
 
         File::put($path, json_encode($content, JSON_UNESCAPED_SLASHES));
@@ -136,24 +137,51 @@ class InstanceSegmentationRequest extends JobRequest
     }
 
     /**
-     * Unfinished function, currently does not work.
-     * TODO: PHP-Function and Python code not yet adapted for use.
+     * TODO: Test usage
+     *
+     * @param string $cropImagesJson Path to the output file of the image cropping.
+     * @param string $outputJsonPath Path to the output file of the script.
+     *
+     * @return string Input JSON file path.
+     */
+    protected function createDINOJson($cropImagesJson, $outputJsonPath, $backbone)
+    {
+        $cropJson = json_decode($cropImagesJson);
+
+        $path = "{$this->tmpDir}/input-dinofv.json";
+        $content = [
+            'cropped_images_path' => $cropJson->cropped_images_path,
+            'cropped_images' => $cropJson->cropped_images,
+            'resize_dimension' => $cropJson->resize_dimension,
+            'backbone' => $backbone,
+            'tmp_dir' => $this->tmpDir,
+            'max_workers' => intval(config('maia.max_workers')),
+            'output_path' => $outputJsonPath,
+        ];
+
+        File::put($path, json_encode($content, JSON_UNESCAPED_SLASHES));
+
+        return $path;
+    }
+
+    /**
+     * TODO: Write tests, test php and python functions.
      * Perform DINO feature vector generation.
      *
-     * @param array $images GenericImage instances.
-     * @param string $datasetOutputPath Path to the JSON output of the dataset generator.
-     * @param string $trainingOutputPath Path to the JSON output of the training script.
+     * @param string $cropOutputPath Path to the JSON output of the image cropping.
+     *
+     * @return string Path to the JSON output file of the feature vector generation script.
      */
     protected function generateDINOFV($cropOutputPath)
     {
         $outputPath = "{$this->tmpDir}/output-dinofv.json";
-        // TODO: Path of cropped_images from previous function should be given to new input json
-        $backbone = config('maia.dino_model'); // -> toJson
-        $inputPath = $this->createDINOJson($backbone);
+        $backbone = config('maia.dino_model');
+        $inputPath = $this->createDINOJson($cropOutputPath, $outputPath, $backbone);
         $script = config('maia.dino_fv_script');
 
         $this->python("{$script} {$inputPath}", 'dinofv-log.txt');
 
+        return $outputPath;
     }
 
     /**

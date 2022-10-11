@@ -1,22 +1,17 @@
-# TODO: Adapt script to handle list of cropped images as json or path to directory
-# Unneeded imports?
-from pathlib import Path
-from PIL import Image
-from PIL import UnidentifiedImageError
-
-# Kept imports:
 import os
 import sys
 import json
 import cv2
-from pyvips import Image as VipsImage
-from pyvips.error import Error as VipsError
 import numpy as np
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-
-# Adapted imports:
 import torch
 from torchvision import transforms as pth_transforms
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+
+from PIL import Image
+from PIL import UnidentifiedImageError
+# Currently unused, might need to change parts that use PIL to VipsImage instead
+#from pyvips import Image as VipsImage
+#from pyvips.error import Error as VipsError
 
 class bc:
     HEADER = '\033[95m'
@@ -30,46 +25,60 @@ class bc:
     UNDERLINE = '\033[4m'
     TEST = '\033[97m'
 
-# Generates feature maps using DINO and saves them as .npz.
-
 # Simplified preprocessing
 preprocess_simple = pth_transforms.Compose([
         pth_transforms.ToTensor(),
         pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
     ])
 
-# TODO: Adapt
+# Generates feature maps using DINO and saves them as .npz.
 class DinoFVGenerator(object):
     def __init__(self, params):
-        # Dict of cropped image IDs and file paths to the cropped images to process.
-        self.cropped_images = params['cropped_images']
         # Architectures: See https://github.com/facebookresearch/dino#pretrained-models-on-pytorch-hub
         # E.g.: dino_resnet50, dino_vitb8, dino_vitb16, dino_vits8, dino_vits16
         self.backbone = params['backbone']
 
-        # Path to the directory to store temporary files.
-        self.tmp_dir = params['tmp_dir']
-        # Estimated available GPU memory in bytes.
-        # TODO: Rausnehmen?
-        self.available_bytes = params['available_bytes']
+        # Dict of cropped image IDs and file paths to the cropped images to process.
+        self.cropped_images = params['cropped_images']
+
+        # Path to cropped images, ensure path ends in separator
+        self.cropped_images_path = params['cropped_images_path'] if params['cropped_images_path'].endswith(os.sep) else params['cropped_images_path']+os.sep
+
+        # Path to feature vector save directory
+        self.fv_path = '{}/fv'.format(self.tmp_dir)
 
         self.max_workers = params['max_workers']
 
-        self.fv_path = '{}/fv'.format(self.tmp_dir)
+        # Dimension used for resizing cropped images.
+        self.resize_dimension = params['resize_dimension']
+
+        # Path to the directory to store temporary files.
+        self.tmp_dir = params['tmp_dir']
 
     def generate(self):
         # Check if dir(s) are there, create if missing
         self.ensure_dirs()
-        model = torch.hub.load('facebookresearch/dino:main', backbone)
-        executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        jobs = []
 
-        # TODO: Add image processing from main()
-        for i, crop in enumerate(self.cropped_images):
-            jobs.append(executor.submit(self.process_image, crop))
+        # TODO: Use already existing model, if available, download otherwise. Currently downloading every time
+        model = torch.hub.load('facebookresearch/dino:main', self.backbone)
+
+        suffix = '.simple_{}_{}x{}'.format(backbone, self.resize_dimension, self.resize_dimension)
+
+        #executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        executor = ProcessPoolExecutor(max_workers=self.max_workers)
+        l = len(images)
+        jobs = []
+        for i, image in enumerate(self.cropped_images):
+            path = self.cropped_images_path+image
+            print(f'{i+1}/{l} Processing image: {path}')
+            try:
+                features = getFeatures(model, path)
+                jobs.append(executor.submit(saveFeatures, self.fv_path, path, features, suffix))
+            except Exception as e:
+                print(f'{bc.FAIL}Exception during processing of image {i+1}/{l}: {e}{bc.ENDC}')
+        executor.shutdown(wait=True)
 
         fv_files = []
-
         for job in as_completed(jobs):
             fv = job.result()
             if fv is not False:
@@ -79,34 +88,15 @@ class DinoFVGenerator(object):
             raise Exception('No feature vectors in dataset. All corrupt?')
 
         return {
-            'fv_path': self.cropped_images_path,
+            'fv_path': self.fv_path,
             'fv_files': fv_files,
+            'resize_dimension': self.resize_dimension,
         }
 
     # Ensure path exists
     def ensure_dirs(self):
         if not os.path.exists(self.fv_path):
            os.makedirs(self.fv_path)
-
-    def process_image(self, i, annotation):
-        try:
-            imageId = annotation[0]
-            image = VipsImage.new_from_file(self.images[imageId])
-            crop_paths = []
-
-            image_file = '{}_{}_cropped.jpg'.format(imageId, i)
-            image_crop, = self.generate_crop(image, annotation)
-            # Standardize image sizes by resizing to specified dimensions
-            image_crop = image_crop.resize(self.resize_dimension, self.resize_dimension)
-
-            image_crop.write_to_file(os.path.join(self.cropped_images_path, image_file), strip=True, Q=100)
-
-        except VipsError as e:
-            print('Image #{} is corrupt! Skipping...'.format(imageId))
-
-            return False, False, False
-
-        return image_file
 
     # Gets the features from the given DINO model
     def getFeatures(model, path):
@@ -117,8 +107,10 @@ class DinoFVGenerator(object):
             img.close()
         except FileNotFoundError:
             print(bc.FAIL+'Cannot find file: '+path+bc.ENDC)
+            return False
         except UnidentifiedImageError:
             print(bc.FAIL+'Cannot open image: '+path+bc.ENDC)
+            return False
         return np.reshape(features, (1, len(features)))
 
     # Saves the features as .npz.
@@ -128,29 +120,8 @@ class DinoFVGenerator(object):
 with open(sys.argv[1]) as f:
     params = json.load(f)
 
-# TODO: Crop the images, return a path to directory?
 runner = DinoFVGenerator(params)
 output = runner.generate()
 
 with open(params['output_path'], 'w') as f:
     json.dump(output, f)
-
-# TODO: Bring this into the generator, adapt to use Json params
-def main():
-    target = sys.argv[1]
-    if not target.endswith(os.sep):
-        target += os.sep
-    Path(target).mkdir(parents=True, exist_ok=True)
-    backbone = sys.argv[2]
-    paths = sys.argv[3:]
-    # TODO: Wenn schon vorhanden, einfach vorhandenes Modell benutzen? Siehe MaskRCNN-Ansatz
-    model = torch.hub.load('facebookresearch/dino:main', backbone)
-    executor = ProcessPoolExecutor(max_workers=os.cpu_count())
-    for i, path in enumerate(paths):
-        print(f'{i+1}/{len(paths)} Processing image: {path}')
-        try:
-            features = getFeatures(model, path)
-            executor.submit(saveFeatures, target, path, features, '.simple_'+backbone)
-        except Exception as e:
-            print(f'{bc.FAIL}Exception during processing of image {i+1}/{len(paths)}: {e}{bc.ENDC}')
-    executor.shutdown(wait=True)

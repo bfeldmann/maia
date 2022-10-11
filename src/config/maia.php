@@ -90,6 +90,11 @@ return [
     'crop_images_script' => __DIR__.'/../resources/scripts/instance-segmentation/CropImages.py',
 
     /*
+    | Dimension of resized images during image cropping.
+    */
+    'maia.resize_dimension' => 512,
+
+    /*
     | Path to the script that performs feature vector generation with DINO.
     */
     'dino_fv_script' => __DIR__.'/../resources/scripts/instance-segmentation/DinoFVGenerator.py',
@@ -99,7 +104,7 @@ return [
     | E.g.: dino_resnet50, dino_vitb8, dino_vitb16, dino_vits8, dino_vits16
     */
     // TODO: Replace by model file for dino later on
-    'dino_model' => 'dino_vits16'
+    'dino_model' => 'dino_vits16',
 
     /*
     | URL from which to download the latest COCO trained weights for Mask R-CNN.
