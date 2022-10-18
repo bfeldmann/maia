@@ -77,7 +77,7 @@ class InstanceSegmentationRequest extends JobRequest
             $annotations = $this->parseAnnotations($images);
 
             # ---> TODO: Check if working correctly, write test
-            $crops = $this->cropImages($images, $datasetOutputPath, $annotations);
+            $crops = $this->cropImages($images, $annotations);
             $fvs = $this->generateDINOFV($crops);
             # <---
 
@@ -96,9 +96,9 @@ class InstanceSegmentationRequest extends JobRequest
      *
      * @return string Input JSON file path.
      */
-    protected function createCropImagesJson($imagesMap, $outputJsonPath, $annotations)
+    protected function createCroppingJson($imagesMap, $outputJsonPath, $annotations)
     {
-        $path = "{$this->tmpDir}/input-crop_images.json";
+        $path = "{$this->tmpDir}/input-cropping.json";
         $content = [
             'images' => $imagesMap,
             'annotations' => $annotations,
@@ -117,18 +117,17 @@ class InstanceSegmentationRequest extends JobRequest
      * TODO: Test usage
      *
      * @param array $images GenericImage instances.
-     * @param string $datasetOutputPath Path to the JSON output of the dataset generator.
      * @param array $annotations Array of the parsed annotations.
      *
      * @return string Path to the JSON output file of the cropping script.
      */
-    protected function cropImages($images, $datasetOutputPath, $annotations)
+    protected function cropImages($images, $annotations)
     {
         $outputPath = "{$this->tmpDir}/output-cropping.json";
 
-        FileCache::batch($relevantImages, function ($images, $paths) use ($datasetOutputPath) {
+        FileCache::batch($images, function ($images, $paths) use ($outputPath, $annotations) {
             $imagesMap = $this->buildImagesMap($images, $paths);
-            $inputPath = $this->createCropJson($imagesMap, $outputPath, $annotations);
+            $inputPath = $this->createCroppingJson($imagesMap, $outputPath, $annotations);
             $script = config('maia.crop_images_script');
             $this->python("{$script} {$inputPath}", 'cropimages-log.txt');
         });
@@ -144,7 +143,7 @@ class InstanceSegmentationRequest extends JobRequest
      *
      * @return string Input JSON file path.
      */
-    protected function createDINOJson($cropImagesJson, $outputJsonPath, $backbone)
+    protected function createDINOFVJson($cropImagesJson, $outputJsonPath, $backbone)
     {
         $cropJson = json_decode($cropImagesJson);
 
@@ -176,7 +175,7 @@ class InstanceSegmentationRequest extends JobRequest
     {
         $outputPath = "{$this->tmpDir}/output-dinofv.json";
         $backbone = config('maia.dino_model');
-        $inputPath = $this->createDINOJson($cropOutputPath, $outputPath, $backbone);
+        $inputPath = $this->createDINOFVJson($cropOutputPath, $outputPath, $backbone);
         $script = config('maia.dino_fv_script');
 
         $this->python("{$script} {$inputPath}", 'dinofv-log.txt');
